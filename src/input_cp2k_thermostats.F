@@ -22,9 +22,10 @@ MODULE input_cp2k_thermostats
                                               low_print_level
    USE cp_units,                        ONLY: cp_unit_to_cp2k
    USE input_constants,                 ONLY: &
-        do_constr_atomic, do_constr_molec, do_constr_none, do_region_defined, do_region_global, &
-        do_region_massive, do_region_molecule, do_region_none, do_thermo_al, do_thermo_csvr, &
-        do_thermo_gle, do_thermo_nose, do_thermo_same_as_part
+        do_constr_atomic, do_constr_molec, do_constr_none, do_ne_colour, do_ne_field, &
+        do_region_defined, do_region_global, do_region_massive, do_region_molecule, &
+        do_region_none, do_thermo_al, do_thermo_csvr, do_thermo_gle, do_thermo_nose, &
+        do_thermo_same_as_part
    USE input_cp2k_subsys,               ONLY: create_rng_section
    USE input_keyword_types,             ONLY: keyword_create,&
                                               keyword_release,&
@@ -54,7 +55,8 @@ MODULE input_cp2k_thermostats
              create_region_section, &
              create_velocity_section, &
              create_mass_section, &
-             create_gle_section
+             create_gle_section, &
+             create_nonequilibrium_section
 
 !***
 CONTAINS
@@ -295,6 +297,75 @@ CONTAINS
 
    END SUBROUTINE create_thermostat_section
 
+! *****************************************************************************
+!> \brief Specifies parameter for Nonequilibrium dynamics for MD
+!> \param section will contain the coeff section
+!> \author JR [James Reid] - University of Queensland - 06.2017
+! **************************************************************************************************
+   SUBROUTINE create_nonequilibrium_section(section)
+      TYPE(section_type), POINTER                        :: section
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'create_nonequilibrium_section', &
+         routineP = moduleN//':'//routineN
+
+      TYPE(keyword_type), POINTER                        :: keyword
+      TYPE(section_type), POINTER                        :: subsection
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+      NULLIFY (subsection)
+      CALL section_create(section, __LOCATION__, name="NE", &
+                          description="Specify Non-equilibrium Fields in simulations.", &
+                          n_keywords=4, n_subsections=0, repeats=.FALSE.)
+      NULLIFY (keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="NETYPE", &
+                          description="Specify the thermostat used for the constant temperature ensembles.", &
+                          usage="NETYPE COLOUR", &
+                          default_i_val=do_ne_colour, &
+                          enum_c_vals=s2a("COLOUR", "FIELD"), &
+                          enum_i_vals=(/do_ne_colour, &
+                                        do_ne_field/), &
+                          enum_desc=s2a("Colour field", &
+                                        "Poiseuille field"))
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="FX", &
+                          description="Field in X.", &
+                          usage="FX <REAL>", &
+                          default_r_val=0.000_dp, & !cp_unit_to_cp2k(0.001_dp,"Hartree/Ang",error=error),&
+                          unit_str="au_f")
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="FY", &
+                          description="Field in Y.", &
+                          usage="FY <REAL>", &
+                          default_r_val=0.000_dp, & !cp_unit_to_cp2k(0.0_dp,"Hartree/Ang",error=error),&
+                          unit_str="au_f")
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="Fz", &
+                          description="Field in Z.", &
+                          usage="FZ <REAL>", &
+                          default_r_val=0.000_dp, & !cp_unit_to_cp2k(0.0_dp,"Hartree/Ang",error=error),&
+                          unit_str="au_f")
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="NELIST", &
+                          description="Specifies a list of atoms to thermostat.", &
+                          usage="NELIST {integer} {integer} .. {integer}", &!repeats=.TRUE.,&
+                          n_var=-1, type_of_var=integer_t)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+      ! Print Section
+      CALL create_print_section_NE(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
+
+   END SUBROUTINE create_nonequilibrium_section
+
 ! **************************************************************************************************
 !> \brief Creates print section for thermostat section
 !> \param section ...
@@ -333,6 +404,34 @@ CONTAINS
       CALL section_add_subsection(section, print_key)
       CALL section_release(print_key)
    END SUBROUTINE create_print_section
+
+! *****************************************************************************
+!> \brief Creates print section for thermostat section
+!> \param section ...
+!> \author by James Reid [JREID]- University of Queensland 06.2017
+! **************************************************************************************************
+   SUBROUTINE create_print_section_NE(section)
+      TYPE(section_type), POINTER                        :: section
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'create_print_section_NE', &
+         routineP = moduleN//':'//routineN
+
+      TYPE(section_type), POINTER                        :: print_key
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+      NULLIFY (print_key)
+      CALL section_create(section, __LOCATION__, name="PRINT", &
+                          description="Collects all print_keys for thermostat", &
+                          n_keywords=1, n_subsections=0, repeats=.FALSE.)
+
+      CALL cp_print_key_section_create(print_key, __LOCATION__, "NE_INFO", &
+                                       description="Controls output information of the Non-equilibrium forces.", &
+                                       print_level=low_print_level, common_iter_levels=1, &
+                                       filename="__STD_OUT__")
+      CALL section_add_subsection(section, print_key)
+      CALL section_release(print_key)
+
+   END SUBROUTINE create_print_section_NE
 
 ! **************************************************************************************************
 !> \brief Creates a section to arbitrary define a region to thermostat

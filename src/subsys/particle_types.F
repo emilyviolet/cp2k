@@ -40,7 +40,8 @@ MODULE particle_types
       ! Particle dependent terms for shell-model
       INTEGER                               :: atom_index = -1, &
                                                t_region_index = -1, &
-                                               shell_index = -1
+                                               shell_index = -1, &
+                                               ccharge = 0 !JR - NEstuff
    END TYPE particle_type
 
    ! Public data types
@@ -84,6 +85,7 @@ CONTAINS
          particle_set(iparticle)%shell_index = 0
          particle_set(iparticle)%atom_index = 0
          particle_set(iparticle)%t_region_index = 0
+         particle_set(iparticle)%ccharge = 0
       END DO
 
    END SUBROUTINE allocate_particle_set

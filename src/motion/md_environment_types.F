@@ -38,6 +38,7 @@ MODULE md_environment_types
    USE md_ener_types,                   ONLY: md_ener_type,&
                                               release_md_ener,&
                                               retain_md_ener
+   USE nonequilibrium_types,            ONLY: NE_type
    USE reftraj_types,                   ONLY: reftraj_type,&
                                               release_reftraj,&
                                               retain_reftraj
@@ -77,6 +78,7 @@ MODULE md_environment_types
       TYPE(simpar_type), POINTER                 :: simpar
       TYPE(average_quantities_type), POINTER     :: averages
       TYPE(thermal_regions_type), POINTER        :: thermal_regions
+      TYPE(NE_type), POINTER                     :: nevar
    END TYPE md_environment_type
 
    ! *** Public subroutines and data types ***
@@ -125,6 +127,7 @@ CONTAINS
       NULLIFY (md_env%reftraj)
       NULLIFY (md_env%averages)
       NULLIFY (md_env%thermal_regions)
+      NULLIFY (md_env%nevar)
       md_env%para_env => para_env
       CALL cp_para_env_retain(md_env%para_env)
       ALLOCATE (md_env%itimes)
@@ -208,12 +211,13 @@ CONTAINS
 !> \param averages ...
 !> \param thermal_regions ...
 !> \param ehrenfest_md ...
+!> \param nevar ...
 ! **************************************************************************************************
    SUBROUTINE get_md_env(md_env, itimes, constant, used_time, cell, simpar, npt, &
                          force_env, para_env, reftraj, t, init, first_time, fe_env, thermostats, barostat, &
                          thermostat_coeff, thermostat_part, thermostat_shell, thermostat_baro, &
                          thermostat_fast, thermostat_slow, md_ener, averages, &
-                         thermal_regions, ehrenfest_md)
+                         thermal_regions, ehrenfest_md, nevar)
 
       TYPE(md_environment_type), POINTER                 :: md_env
       INTEGER, OPTIONAL, POINTER                         :: itimes
@@ -236,6 +240,7 @@ CONTAINS
       TYPE(average_quantities_type), OPTIONAL, POINTER   :: averages
       TYPE(thermal_regions_type), OPTIONAL, POINTER      :: thermal_regions
       LOGICAL, OPTIONAL                                  :: ehrenfest_md
+      TYPE(NE_type), OPTIONAL, POINTER                   :: nevar
 
       LOGICAL                                            :: check
 
@@ -250,6 +255,7 @@ CONTAINS
       IF (PRESENT(simpar)) simpar => md_env%simpar
       IF (PRESENT(thermostats)) thermostats => md_env%thermostats
       IF (PRESENT(barostat)) barostat => md_env%barostat
+      IF (PRESENT(nevar)) nevar => md_env%nevar
       IF (PRESENT(thermostat_part) .OR. PRESENT(thermostat_coeff) .OR. &
           PRESENT(thermostat_baro) .OR. PRESENT(thermostat_shell) .OR. &
           PRESENT(thermostat_fast) .OR. PRESENT(thermostat_slow)) THEN
@@ -310,10 +316,11 @@ CONTAINS
 !> \param averages ...
 !> \param thermal_regions ...
 !> \param ehrenfest_md ...
+!> \param nevar ...
 ! **************************************************************************************************
    SUBROUTINE set_md_env(md_env, itimes, constant, cell, simpar, fe_env, force_env, &
                          para_env, init, first_time, thermostats, barostat, reftraj, md_ener, averages, &
-                         thermal_regions, ehrenfest_md)
+                         thermal_regions, ehrenfest_md, nevar)
 
       TYPE(md_environment_type), POINTER                 :: md_env
       INTEGER, OPTIONAL, POINTER                         :: itimes
@@ -331,6 +338,7 @@ CONTAINS
       TYPE(average_quantities_type), OPTIONAL, POINTER   :: averages
       TYPE(thermal_regions_type), OPTIONAL, POINTER      :: thermal_regions
       LOGICAL, OPTIONAL                                  :: ehrenfest_md
+      TYPE(NE_type), OPTIONAL, POINTER                   :: nevar
 
       LOGICAL                                            :: check
 
@@ -350,6 +358,7 @@ CONTAINS
          CALL retain_thermostats(thermostats)
          md_env%thermostats => thermostats
       END IF
+      IF (PRESENT(nevar)) md_env%nevar => nevar
       IF (PRESENT(simpar)) md_env%simpar => simpar
       IF (PRESENT(itimes)) md_env%itimes => itimes
       IF (PRESENT(fe_env)) md_env%fe_env => fe_env

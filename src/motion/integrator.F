@@ -61,7 +61,7 @@ MODULE integrator
    USE integrator_utils,                ONLY: &
         allocate_old, allocate_tmp, damp_v, damp_veps, deallocate_old, get_s_ds, &
         old_variables_type, rattle_roll_setup, set, tmp_variables_type, update_dealloc_tmp, &
-        update_pv, update_veps, variable_timestep, vv_first, vv_second
+        update_pv, update_veps, variable_timestep, vv_first, vv_first_NE, vv_second, vv_second_NE
    USE kinds,                           ONLY: dp
    USE mathlib,                         ONLY: matmul_3x3,&
                                               transpose_3d
@@ -75,6 +75,7 @@ MODULE integrator
    USE molecule_list_types,             ONLY: molecule_list_type
    USE molecule_types,                  ONLY: global_constraint_type,&
                                               molecule_type
+   USE nonequilibrium_types,            ONLY: NE_type
    USE particle_list_types,             ONLY: particle_list_type
    USE particle_types,                  ONLY: particle_type,&
                                               update_particle_set
@@ -407,6 +408,7 @@ CONTAINS
       TYPE(molecule_kind_type), DIMENSION(:), POINTER    :: molecule_kind_set
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
                                                             shell_particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: core_particle_set, particle_set, &
@@ -424,7 +426,7 @@ CONTAINS
                core_particle_set, thermostat_shell, dft_control, itimes)
       CALL get_md_env(md_env=md_env, simpar=simpar, force_env=force_env, &
                       thermostat_coeff=thermostat_coeff, thermostat_shell=thermostat_shell, &
-                      para_env=para_env, ehrenfest_md=ehrenfest_md, itimes=itimes)
+                      para_env=para_env, ehrenfest_md=ehrenfest_md, nevar=nevar, itimes=itimes)
       dt = simpar%dt
       CALL force_env_get(force_env=force_env, subsys=subsys, cell=cell)
 
@@ -474,6 +476,10 @@ CONTAINS
       CALL vv_first(tmp, atomic_kind_set, local_particles, particle_set, &
                     core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
 
+      ! Velocity Verlet (first part) for non-equilibrium forces
+      IF (simpar%do_NEforce) CALL vv_first_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                              nparticle_kind, dt, nevar)
+
       IF (simpar%variable_dt) CALL variable_timestep(md_env, tmp, dt, simpar, para_env, atomic_kind_set, &
                                                      local_particles, particle_set, core_particle_set, shell_particle_set, &
                                                      nparticle_kind, shell_adiabatic)
@@ -505,6 +511,11 @@ CONTAINS
          v_old(:, :) = tmp%vel
          CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                         core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
+
+         ! Velocity Verlet (second part) for non-equilibrium forces
+         IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                                  nparticle_kind, dt, nevar)
+
          CALL update_dealloc_tmp(tmp, particle_set, shell_particle_set, &
                                  core_particle_set, para_env, shell_adiabatic, vel=.TRUE., &
                                  should_deall_vel=.FALSE.)
@@ -537,6 +548,10 @@ CONTAINS
          ! Velocity Verlet (second part)
          CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                         core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
+
+         ! Velocity Verlet (second part) for non-equilibrium forces
+         IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                                  nparticle_kind, dt, nevar)
 
          IF (simpar%constraint) CALL rattle_control(gci, local_molecules, molecule_set, &
                                                     molecule_kind_set, particle_set, tmp%vel, dt, simpar%shake_tol, &
@@ -732,6 +747,7 @@ CONTAINS
       TYPE(molecule_kind_type), DIMENSION(:), POINTER    :: molecule_kind_set
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
                                                             shell_particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: core_particle_set, particle_set, &
@@ -752,7 +768,7 @@ CONTAINS
       CALL get_md_env(md_env=md_env, simpar=simpar, force_env=force_env, &
                       thermostat_fast=thermostat_fast, thermostat_slow=thermostat_slow, &
                       thermostat_coeff=thermostat_coeff, thermostat_shell=thermostat_shell, &
-                      para_env=para_env, itimes=itimes)
+                      para_env=para_env, nevar=nevar, itimes=itimes)
       dt = simpar%dt
 
       CALL force_env_get(force_env=force_env, subsys=subsys, cell=cell)
@@ -832,6 +848,10 @@ CONTAINS
       CALL vv_first(tmp, atomic_kind_set, local_particles, particle_set, &
                     core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
 
+      ! Velocity Verlet (first part) for non-equilibrium forces
+      IF (simpar%do_NEforce) CALL vv_first_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                              nparticle_kind, dt, nevar)
+
       IF (simpar%variable_dt) CALL variable_timestep(md_env, tmp, dt, simpar, para_env, atomic_kind_set, &
                                                      local_particles, particle_set, core_particle_set, shell_particle_set, &
                                                      nparticle_kind, shell_adiabatic)
@@ -865,6 +885,9 @@ CONTAINS
       ! Velocity Verlet (second part)
       CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                      core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
+      ! Velocity Verlet (second part) for non-equilibrium forces
+      IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                               nparticle_kind, dt, nevar)
 
       IF (simpar%constraint) CALL rattle_control(gci, local_molecules, molecule_set, &
                                                  molecule_kind_set, particle_set, tmp%vel, dt, simpar%shake_tol, &
@@ -907,7 +930,6 @@ CONTAINS
                            local_particles, virial, para_env%group)
 
    END SUBROUTINE nvt_adiabatic
-
 ! **************************************************************************************************
 !> \brief nvt integrator for particle positions & momenta
 !> \param md_env ...
@@ -940,6 +962,7 @@ CONTAINS
       TYPE(molecule_kind_type), DIMENSION(:), POINTER    :: molecule_kind_set
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
                                                             shell_particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: core_particle_set, particle_set, &
@@ -959,7 +982,7 @@ CONTAINS
 
       CALL get_md_env(md_env=md_env, simpar=simpar, force_env=force_env, &
                       thermostat_part=thermostat_part, thermostat_coeff=thermostat_coeff, &
-                      thermostat_shell=thermostat_shell, para_env=para_env, &
+                      thermostat_shell=thermostat_shell, para_env=para_env, nevar=nevar, &
                       itimes=itimes)
       dt = simpar%dt
 
@@ -1037,6 +1060,10 @@ CONTAINS
       CALL vv_first(tmp, atomic_kind_set, local_particles, particle_set, &
                     core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
 
+      ! Velocity Verlet (first part) nonequilibrium
+      IF (simpar%do_NEforce) CALL vv_first_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                              nparticle_kind, dt, nevar)
+
       IF (simpar%variable_dt) CALL variable_timestep(md_env, tmp, dt, simpar, para_env, atomic_kind_set, &
                                                      local_particles, particle_set, core_particle_set, shell_particle_set, &
                                                      nparticle_kind, shell_adiabatic)
@@ -1108,6 +1135,9 @@ CONTAINS
       ! Velocity Verlet (second part)
       CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                      core_particle_set, shell_particle_set, nparticle_kind, shell_adiabatic, dt)
+
+      IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                               nparticle_kind, dt, nevar)
 
       IF (simpar%constraint) CALL rattle_control(gci, local_molecules, molecule_set, &
                                                  molecule_kind_set, particle_set, tmp%vel, dt, simpar%shake_tol, &
@@ -1187,6 +1217,7 @@ CONTAINS
       TYPE(molecule_kind_type), DIMENSION(:), POINTER    :: molecule_kind_set
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(npt_info_type), POINTER                       :: npt(:, :)
       TYPE(old_variables_type), POINTER                  :: old
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
@@ -1209,7 +1240,7 @@ CONTAINS
       CALL get_md_env(md_env=md_env, simpar=simpar, force_env=force_env, &
                       thermostat_part=thermostat_part, thermostat_baro=thermostat_baro, &
                       thermostat_shell=thermostat_shell, npt=npt, first_time=first_time, &
-                      para_env=para_env, itimes=itimes)
+                      para_env=para_env, nevar=nevar, itimes=itimes)
       dt = simpar%dt
       infree = 1.0_dp/REAL(simpar%nfree, KIND=dp)
 
@@ -1345,6 +1376,10 @@ CONTAINS
                        core_particle_set, shell_particle_set, nparticle_kind, &
                        shell_adiabatic, dt)
 
+         ! Velocity Verlet for non-equilibrium component
+         IF (simpar%do_NEforce) CALL vv_first_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                                 nparticle_kind, dt, nevar)
+
          IF (simpar%variable_dt) CALL variable_timestep(md_env, tmp, dt, simpar, para_env, &
                                                         atomic_kind_set, local_particles, particle_set, core_particle_set, &
                                                         shell_particle_set, nparticle_kind, shell_adiabatic, npt=npt)
@@ -1389,6 +1424,10 @@ CONTAINS
       CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                      core_particle_set, shell_particle_set, nparticle_kind, &
                      shell_adiabatic, dt)
+
+      ! Velocity Verlet (second part) for non-equilibrium component
+      IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                               nparticle_kind, dt, nevar)
 
       IF (simpar%constraint) THEN
          roll_tol_thrs = simpar%roll_tol
@@ -1650,6 +1689,7 @@ CONTAINS
       TYPE(molecule_kind_type), DIMENSION(:), POINTER    :: molecule_kind_set
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(npt_info_type), POINTER                       :: npt(:, :)
       TYPE(old_variables_type), POINTER                  :: old
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
@@ -1668,7 +1708,7 @@ CONTAINS
       NULLIFY (simpar, virial, itimes)
 
       CALL get_md_env(md_env=md_env, simpar=simpar, force_env=force_env, npt=npt, &
-                      first_time=first_time, para_env=para_env, itimes=itimes)
+                      first_time=first_time, para_env=para_env, nevar=nevar, itimes=itimes)
       dt = simpar%dt
       infree = 1.0_dp/REAL(simpar%nfree, dp)
 
@@ -1773,6 +1813,10 @@ CONTAINS
                        core_particle_set, shell_particle_set, nparticle_kind, &
                        shell_adiabatic, dt)
 
+         ! Velocity Verlet (first part) for non-equilibrium component
+         IF (simpar%do_NEforce) CALL vv_first_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                                 nparticle_kind, dt, nevar)
+
          IF (simpar%variable_dt) CALL variable_timestep(md_env, tmp, dt, simpar, para_env, &
                                                         atomic_kind_set, local_particles, particle_set, core_particle_set, &
                                                         shell_particle_set, nparticle_kind, shell_adiabatic, npt=npt)
@@ -1808,6 +1852,10 @@ CONTAINS
       CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                      core_particle_set, shell_particle_set, nparticle_kind, &
                      shell_adiabatic, dt)
+
+      ! Velocity Verlet (second part) for non-equilibrium component
+      IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                               nparticle_kind, dt, nevar)
 
       IF (simpar%constraint) THEN
          roll_tol_thrs = simpar%roll_tol
@@ -2149,6 +2197,7 @@ CONTAINS
       TYPE(molecule_kind_type), DIMENSION(:), POINTER    :: molecule_kind_set
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(npt_info_type), POINTER                       :: npt(:, :)
       TYPE(old_variables_type), POINTER                  :: old
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
@@ -2171,7 +2220,7 @@ CONTAINS
       CALL get_md_env(md_env=md_env, simpar=simpar, force_env=force_env, &
                       thermostat_part=thermostat_part, thermostat_baro=thermostat_baro, &
                       thermostat_shell=thermostat_shell, npt=npt, first_time=first_time, &
-                      para_env=para_env, barostat=barostat, itimes=itimes)
+                      para_env=para_env, barostat=barostat, nevar=nevar, itimes=itimes)
       dt = simpar%dt
       infree = 1.0_dp/REAL(simpar%nfree, KIND=dp)
 
@@ -2289,6 +2338,10 @@ CONTAINS
                        core_particle_set, shell_particle_set, nparticle_kind, &
                        shell_adiabatic, dt, u=tmp%u)
 
+         ! Velocity Verlet (first part) for non-equilibrium component
+         IF (simpar%do_NEforce) CALL vv_first_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                                 nparticle_kind, dt, nevar)
+
          IF (simpar%variable_dt) CALL variable_timestep(md_env, tmp, dt, simpar, para_env, &
                                                         atomic_kind_set, local_particles, particle_set, core_particle_set, &
                                                         shell_particle_set, nparticle_kind, shell_adiabatic, npt=npt)
@@ -2336,6 +2389,10 @@ CONTAINS
       CALL vv_second(tmp, atomic_kind_set, local_particles, particle_set, &
                      core_particle_set, shell_particle_set, nparticle_kind, &
                      shell_adiabatic, dt, tmp%u)
+
+      ! Velocity Verlet (second part) for non-equilibrium component
+      IF (simpar%do_NEforce) CALL vv_second_NE(tmp, atomic_kind_set, local_particles, particle_set, &
+                                               nparticle_kind, dt, nevar)
 
       IF (simpar%constraint) THEN
          roll_tol_thrs = simpar%roll_tol

@@ -76,6 +76,8 @@ MODULE md_run
                                               metadyn_initialise_plumed,&
                                               metadyn_write_colvar
    USE metadynamics_types,              ONLY: set_meta_env
+   USE nonequilibrium_types,            ONLY: NE_type,&
+                                              create_NE_type
    USE particle_list_types,             ONLY: particle_list_type
    USE reftraj_types,                   ONLY: create_reftraj,&
                                               reftraj_type,&
@@ -199,6 +201,7 @@ CONTAINS
       TYPE(distribution_1d_type), POINTER                :: local_particles
       TYPE(free_energy_type), POINTER                    :: fe_env
       TYPE(md_ener_type), POINTER                        :: md_ener
+      TYPE(NE_type), POINTER                             :: nevar
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(reftraj_type), POINTER                        :: reftraj
       TYPE(section_vals_type), POINTER :: constraint_section, force_env_section, &
@@ -252,6 +255,9 @@ CONTAINS
       CALL create_thermostats(thermostats, md_section, force_env, simpar, para_env, &
                               globenv, global_section)
 
+      ! If requested setup Non-equilibrium JR - Based off barostat
+      CALL create_NE_type(nevar, simpar, md_section, force_env)
+
       ! If requested setup Barostat
       CALL create_barostat_type(barostat, md_section, force_env, simpar, globenv)
 
@@ -266,7 +272,8 @@ CONTAINS
                                              pos=my_pos, act=my_act)
       END IF
 
-      CALL set_md_env(md_env, thermostats=thermostats, barostat=barostat, thermal_regions=thermal_regions)
+      CALL set_md_env(md_env, thermostats=thermostats, barostat=barostat, &
+                      thermal_regions=thermal_regions, nevar=nevar)
 
       CALL get_md_env(md_env, ehrenfest_md=ehrenfest_md)
 
